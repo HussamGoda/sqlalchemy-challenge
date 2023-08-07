@@ -12,13 +12,14 @@ import pandas as pd
 from flask import Flask, jsonify
 
 
-#################################################
+
 # Database Setup
-#################################################
+
 engine = create_engine("sqlite:///Resources/hawaii.sqlite")
 
 # reflect an existing database into a new model
 Base = automap_base()
+
 # reflect the tables
 Base.prepare(engine, reflect=True)
 
@@ -26,14 +27,13 @@ Base.prepare(engine, reflect=True)
 Measurement = Base.classes.measurement
 Station = Base.classes.station
 
-#################################################
+
 # Flask Setup
-#################################################
+
 app = Flask(__name__)
 
-#################################################
+
 # Flask Routes
-#################################################
 
 @app.route("/")
 def welcome():
@@ -44,8 +44,10 @@ def welcome():
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/tobs<br/>"
         f"/api/v1.0/2011-01-01<br/>"
-        f"/api/v1.0/2011-01-01/2012-01-01"
+        f"/api/v1.0/2011-01-01/2014-12-31"
     )
+
+#-------------------------------------------------------------------------------------------------------
 
 @app.route("/api/v1.0/precipitation")
 def percipitation():
@@ -67,6 +69,8 @@ def percipitation():
         all_dates_prcp.append(dates_prcp_dict)
 
     return jsonify(all_dates_prcp)
+
+#----------------------------------------------------------------------------------------
 
 @app.route("/api/v1.0/stations")
 def stations():
@@ -99,6 +103,7 @@ def stations():
 
     return jsonify(all_stations_data)
 
+#-------------------------------------------------------------------------------------------------
 
 @app.route("/api/v1.0/tobs")
 def temps():
@@ -153,25 +158,67 @@ def temps():
 
         all_temp_data_for_one_year.append(temp_date_one_year_dict)
 
-    return jsonify(most_active_station, all_temp_data_for_one_year)
+    return jsonify ({"Basic Information for The Most Active Station": most_active_station},
+                     {"Information for One Year ": all_temp_data_for_one_year})
+
+#-----------------------------------------------------------------------------------------------------
 
 @app.route("/api/v1.0/<start>")
 def start_date(start):
     session = Session(bind=engine)
 
-    #start = input("please input a starting date ")
-    start_date = datetime.strptime(start, "%Y-%m-%d")
-    results = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
-        filter(Measurement.date >= start_date).all()
-    session.close()
+    date_start_from_url = datetime.strptime(start, "%Y-%m-%d")
+    columns_to_use = [Measurement.date, Measurement.tobs]  
 
-    temp_stats = {
-        "Tmin": results[0][0],
-        "Tavg": results[0][1],
-        "Tmax": results[0][2]
-    }
+    calculated_parameters = session.query(*columns_to_use).filter(Measurement.date >= date_start_from_url).filter(Measurement.tobs != "NaN").all()
+    session.close()
     
-    return jsonify(temp_stats)
+    summary_for_temp = []
+    if calculated_parameters:
+        temp_min = min(value.tobs for value in calculated_parameters)
+        temp_max = max(value.tobs for value in calculated_parameters)
+        temp_ave = sum(value.tobs for value in calculated_parameters)/len(calculated_parameters)
+
+       
+        summary_for_temp_dict = {}
+        summary_for_temp_dict["Minimum Temp."] = temp_min
+        summary_for_temp_dict["Maximum Temp."] = temp_max
+        summary_for_temp_dict["Average Temp."] = temp_ave
+     
+        summary_for_temp.append(summary_for_temp_dict)
+
+    
+    return jsonify(summary_for_temp_dict)
+
+#------------------------------------------------------------------------------------------------------
+
+@app.route("/api/v1.0/<start>/<end>")
+def start_date_end_date(start, end):
+    session = Session(bind=engine)
+
+    date_start_from_url_1 = datetime.strptime(start, "%Y-%m-%d")
+    date_end_from_url = datetime.strptime(end,"%Y-%m-%d")
+    
+    columns_to_use_1 = [Measurement.date, Measurement.tobs]
+
+    calculated_parameters_1 = session.query(*columns_to_use_1).filter(Measurement.date >= date_start_from_url_1).filter(Measurement.date <= date_end_from_url).filter(Measurement.tobs != "NaN").all()
+    session.close()
+    
+    summary_for_temp_1 = []
+    if calculated_parameters_1:
+        temp_min = min(value.tobs for value in calculated_parameters_1)
+        temp_max = max(value.tobs for value in calculated_parameters_1)
+        temp_ave = sum(value.tobs for value in calculated_parameters_1)/len(calculated_parameters_1)
+
+        summary_for_temp_dict_1 = {}
+        summary_for_temp_dict_1["Minimum Temp."] = temp_min
+        summary_for_temp_dict_1["Maximum Temp."] = temp_max
+        summary_for_temp_dict_1["Average Temp."] = temp_ave
+     
+        summary_for_temp_1.append(summary_for_temp_dict_1)
+
+    
+    return jsonify(summary_for_temp_dict_1)  
 
 if __name__ == "__main__":
     app.run(debug=True)
