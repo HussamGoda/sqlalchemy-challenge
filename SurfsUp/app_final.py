@@ -32,7 +32,6 @@ Station = Base.classes.station
 
 app = Flask(__name__)
 
-
 # Flask Routes
 # start the homepage and list all routes
 
@@ -52,21 +51,37 @@ def Climate_App():
 #
 @app.route("/api/v1.0/precipitation")
 def percipitation():
+
     # Create our session (link) from Python to the DB
     session = Session(bind=engine)
 
     """Return a list of dates and precipitation"""
-    # Query all dates and prcp
-    dates_prcp = session.query(Measurement.date, Measurement.prcp).all()
+    # Query all dates and prcp for the last year in the database
+    # Find most recent date, and date one year ago
+   
+    most_recent_date = session.query(Measurement.date).order_by(Measurement.date.desc()).first()
+    most_recent_date_seprated = datetime.strptime(most_recent_date[0], "%Y-%m-%d")
+    year =  int(most_recent_date_seprated.year)
+    month = int(most_recent_date_seprated.month)
+    day = int(most_recent_date_seprated.day)
+    most_recent_date_updated = dt.date(year, month, day)
+
+    #Date one year ago
+    date_one_year_ago = dt.date(year, month, day) - dt.timedelta(days=365)
+
+    # getting required parameters
+    parameters_to_retrieve = [Measurement.station, Measurement.date, Measurement.prcp]
+    retrive_date_for_one_year = session.query(*parameters_to_retrieve).filter(Measurement.date >= date_one_year_ago).\
+        filter(Measurement.date <= most_recent_date_updated).all()
 
     session.close()
 
-    # Create a dictionary from the row data
+    # Create a dictionary from the row data and assign to a list
     all_dates_prcp = []
-    for date, prcp in dates_prcp:
+    for record in retrive_date_for_one_year:
         dates_prcp_dict = {}
-        dates_prcp_dict["date"] = date
-        dates_prcp_dict["prcp"] = prcp
+        dates_prcp_dict["date"] = record.date
+        dates_prcp_dict["prcp"] = record.prcp
         all_dates_prcp.append(dates_prcp_dict)
 
     return jsonify(all_dates_prcp)
@@ -75,21 +90,26 @@ def percipitation():
 
 @app.route("/api/v1.0/stations")
 def stations():
+
     # Create our session (link) from Python to the DB
     session = Session(bind=engine)
 
     """Merge tables measurement and station"""
-    # merge tables on station colum
-    columns_names = session.query(Station.station, Station.name, Station.latitude, Station.longitude, Station.elevation,\
+    # since the question asks to return all station data, a merge is required as station basic info is in a seperate table 
+    # than the prcp and tobs date for each station
+     
+    columns_names = session.query(Station.id, Station.name, Station.latitude, Station.longitude, Station.elevation,\
                      Measurement.station, Measurement.date, Measurement.prcp, Measurement.tobs).\
                         filter(Station.station == Measurement.station).all()
 
    
     session.close()
+
     all_stations_data = []
     
     for cn in columns_names:
         all_stations_data_dict = {}
+        all_stations_data_dict["id"] = cn.id
         all_stations_data_dict["station"] = cn.station
         all_stations_data_dict["name"] = cn.name
         all_stations_data_dict["latitude"] = cn.latitude
@@ -108,6 +128,7 @@ def stations():
 
 @app.route("/api/v1.0/tobs")
 def temps():
+
     # Create our session (link) from Python to the DB
     session = Session(bind=engine)
 
@@ -131,7 +152,7 @@ def temps():
         filter(Measurement.date >= date_one_year_ago).filter(Measurement.date <= most_recent_date_updated).all()
 
     # Quary Basic Data from the station table for most active station
-    columns_data_most_active_stations = [Station.station, Station.name, Station.latitude, Station.longitude, Station.elevation]
+    columns_data_most_active_stations = [Station.id, Station.station, Station.name, Station.latitude, Station.longitude, Station.elevation]
 
     basic_data_of_most_active_station = session.query(*columns_data_most_active_stations).filter(Station.station==name_of_most_active_station[0]).all()
 
@@ -139,16 +160,17 @@ def temps():
 
     # Create a dictionary from the row data
 
-    most_active_station = []
+    most_active_station_basic_info = []
     for basic_data in basic_data_of_most_active_station:
         basic_data_station_active_dict = {}
+        basic_data_station_active_dict["id"] = basic_data.id
         basic_data_station_active_dict["station"] = basic_data.station
         basic_data_station_active_dict["name"] = basic_data.name
         basic_data_station_active_dict["latitude"] = basic_data.latitude
         basic_data_station_active_dict["longitude"] = basic_data.longitude
         basic_data_station_active_dict["elevation"] = basic_data.elevation
 
-        most_active_station.append(basic_data_station_active_dict)
+        most_active_station_basic_info.append(basic_data_station_active_dict)
 
     all_temp_data_for_one_year = []
     for station, date, tobs in temp_data_for_one_year:
@@ -159,7 +181,7 @@ def temps():
 
         all_temp_data_for_one_year.append(temp_date_one_year_dict)
 
-    return jsonify ({"Basic Information for The Most Active Station": most_active_station},
+    return jsonify ({"Basic Information for The Most Active Station": most_active_station_basic_info},
                      {"Information for One Year ": all_temp_data_for_one_year})
 
 #-----------------------------------------------------------------------------------------------------
@@ -195,6 +217,7 @@ def start_date(start):
 
 @app.route("/api/v1.0/<start>/<end>")
 def start_date_end_date(start, end):
+    
     session = Session(bind=engine)
 
     date_start_from_url_1 = datetime.strptime(start, "%Y-%m-%d")
